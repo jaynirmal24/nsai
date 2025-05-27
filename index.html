@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NS Ai</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="main-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="sidebar-toggle" id="sidebarToggle" title="Toggle menu">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="4" y="7" width="6" height="14" rx="2" fill="#ececf1"/>
+            <rect x="12" y="7" width="12" height="14" rx="2" fill="#ececf1" fill-opacity="0.6"/>
+          </svg>
+        </button>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" alt="Gemini Logo" class="logo"/>
+        <h2>NS Ai</h2>
+        <button id="newChatBtn" class="new-chat-btn" title="Start new chat">+ New Chat</button>
+      </div>
+      <div class="sidebar-history">
+        <h3>Chat History</h3>
+        <ul id="historyList"></ul>
+        <button id="clearHistoryBtn" class="clear-history-btn">Clear History</button>
+      </div>
+      <div class="sidebar-footer">
+        <span>
+           A&nbsp;
+          <a href="https://niramaystudio.blogspot.com/" target="_blank" rel="noopener" style="color:#00c3ff;text-decoration:underline;font-weight:600;">
+            Niramay Studio
+          </a>
+          &nbsp;Project
+        </span>
+      </div>
+    </aside>
+    <div class="chat-section">
+      <header class="chat-header">
+        <button class="sidebar-toggle desktop" id="sidebarExpandBtn" title="Open menu">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="4" y="7" width="6" height="14" rx="2" fill="#ececf1"/>
+            <rect x="12" y="7" width="12" height="14" rx="2" fill="#ececf1" fill-opacity="0.6"/>
+          </svg>
+        </button>
+        <button class="sidebar-toggle mobile" id="sidebarToggleMobile" title="Open menu">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="4" y="7" width="6" height="14" rx="2" fill="#ececf1"/>
+            <rect x="12" y="7" width="12" height="14" rx="2" fill="#ececf1" fill-opacity="0.6"/>
+          </svg>
+        </button>
+        <h1>NS Ai</h1>
+      </header>
+      <div class="chat-frame">
+        <div id="chatBox" class="chat-box"></div>
+        <form class="input-area" id="chatForm" autocomplete="off">
+          <textarea id="userInput" placeholder="Type your message..." rows="1"></textarea>
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <!-- Recent Chats Popup -->
+  <div class="recent-chats-popup" id="recentChatsPopup">
+    <div class="popup-content">
+      <h2>Welcome Back!</h2>
+      <p>Continue a recent conversation or start a new one:</p>
+      <ul id="recentChatsList"></ul>
+      <button id="newChatPopupBtn" class="new-chat-btn">Start New Chat</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
