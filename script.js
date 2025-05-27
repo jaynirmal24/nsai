@@ -166,7 +166,7 @@ async function generateChatTitle(history) {
     const prompt = "Based on the following conversation, suggest a short, relevant chat title (max 5 words, no punctuation):\n\n" +
       history.map(m => (m.role === 'user' ? "User: " : "AI: ") + m.parts[0].text).join('\n');
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + API_KEY,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + API_KEY,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -297,19 +297,7 @@ function showHistoryMenuPopup(id, chat) {
   };
   content.appendChild(infoOption);
 
-  // 3. Share
-  const shareOption = document.createElement('button');
-  shareOption.textContent = 'Share';
-  shareOption.onclick = (e) => {
-    e.stopPropagation();
-    const shareUrl = `${window.location.origin}/share?chatId=${id}`;
-    navigator.clipboard.writeText(shareUrl);
-    alert(`Shareable URL copied to clipboard:\n${shareUrl}`);
-    closeHistoryMenuPopup();
-  };
-  content.appendChild(shareOption);
-
-  // 4. Rename
+  // 3. Rename
   const renameOption = document.createElement('button');
   renameOption.textContent = 'Rename';
   renameOption.onclick = (e) => {
@@ -326,7 +314,7 @@ function showHistoryMenuPopup(id, chat) {
   };
   content.appendChild(renameOption);
 
-  // 5. Delete
+  // 4. Delete
   const deleteOption = document.createElement('button');
   deleteOption.textContent = 'Delete';
   deleteOption.onclick = (e) => {
@@ -552,7 +540,256 @@ function renderBoldAndBreaks(text) {
   return safe;
 }
 
-// --- Chat send logic ---
+// --- Model selection UI ---
+const MODEL_OPTIONS = [
+	{ id: 'gemini_pro', label: 'NS (2.0 PRO)', model: 'google/gemini-2.0-flash-exp:free', api_key: API_KEY, default: true, max_tokens: 30720 },
+	{ id: 'gemini', label: 'NS (2.0) (Limited)', model: 'google/gemini-2.0-flash-exp:free', max_tokens: 30720 },
+	{ id: 'deepseek', label: 'NS (1.5 PRO) (Limited)', model: 'deepseek/deepseek-chat:free', max_tokens: 30720 },
+	{ id: 'llama4', label: 'NS (1.0) (Limited)', model: 'meta-llama/llama-4-maverick:free', max_tokens: 30720 },
+	{ id: 'deepseekr1', label: 'NS (DeepMind) (Limited)', model: 'deepseek/deepseek-r1:free', max_tokens: 30720 }
+];
+let selectedModel = MODEL_OPTIONS.find(m => m.default).id;
+
+// Add model selector to the DOM (above chatBox)
+(function addModelSelector() {
+  const chatFrame = document.querySelector('.chat-frame');
+  if (!chatFrame) return;
+  const selectorDiv = document.createElement('div');
+  selectorDiv.style.display = 'flex';
+  selectorDiv.style.justifyContent = 'flex-end';
+  selectorDiv.style.alignItems = 'center';
+  selectorDiv.style.gap = '8px';
+  selectorDiv.style.padding = '8px 24px 0 24px';
+
+  const label = document.createElement('label');
+  label.textContent = 'Model: ';
+  label.style.fontWeight = 'bold';
+  label.style.color = '#ececf1';
+
+  const select = document.createElement('select');
+  select.id = 'modelSelector';
+  select.style.background = '#23272f';
+  select.style.color = '#ececf1';
+  select.style.border = '1px solid #343541';
+  select.style.borderRadius = '6px';
+  select.style.padding = '4px 10px';
+  select.style.fontSize = '1rem';
+
+  MODEL_OPTIONS.forEach(opt => {
+    const option = document.createElement('option');
+    option.value = opt.id;
+    option.textContent = opt.label;
+    if (opt.default) option.selected = true;
+    select.appendChild(option);
+  });
+
+  select.onchange = function () {
+    selectedModel = this.value;
+  };
+
+  selectorDiv.appendChild(label);
+  selectorDiv.appendChild(select);
+
+  chatFrame.insertBefore(selectorDiv, chatFrame.firstChild);
+})();
+
+// --- OpenRouter API KEY ---
+const OPENROUTER_API_KEY = "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";
+
+// --- Unified fetchAIReply function ---
+async function fetchAIReply(history) {
+  // --- Common rules for all models ---
+  const lastUserMsg = history.slice().reverse().find(m => m.role === 'user');
+  const userText = lastUserMsg?.parts?.[0]?.text?.toLowerCase() || "";
+  const timeRegex = /\b(what\s+time\s+is\s+it|current\s+time|tell\s+me\s+the\s+time|time\s+now|time\s+please)\b/;
+  const dateRegex = /\b(what\s+is\s+the\s+date|current\s+date|today'?s?\s+date|date\s+today|date\s+please)\b/;
+  const weatherRegex = /\b(weather|temperature|forecast|rain|sunny|cloudy|humidity|windy|snow|climate)\b/;
+
+  // NEW: Regex for "who made you", "who are you", etc.
+  const identityRegex = /\b(who\s+(are|r)\s+you|who\s+made\s+you|who\s+created\s+you|who\s+build\s+you|who\s+trained\s+you|who\s+developed\s+you|who\s+designed\s+you|your\s+creator|your\s+maker|your\s+builder|your\s+trainer|your\s+developer|your\s+designer)\b/;
+
+  if (
+    timeRegex.test(userText) ||
+    dateRegex.test(userText) ||
+    (weatherRegex.test(userText) && /\b(today|now|current|outside|in\s+\w+)/.test(userText))
+  ) {
+    return "Sorry, I can't provide real-time information like time, date, or weather as I am a text-based AI model.";
+  }
+
+  // If user asks about identity/creator, always respond with the new message
+  if (identityRegex.test(userText)) {
+    return "I am made by Niramay Studio. I'm a computer program designed to understand and respond to human language. I'm here to help answer your questions and chat with you.";
+  }
+
+  // --- Model-specific logic ---
+  const modelForThisChat = MODEL_OPTIONS.find(m => m.id === selectedModel).id;
+  let reply = "";
+  if (modelForThisChat === 'gemini_pro') {
+    reply = await fetchGeminiOfficialReply(history);
+  } else {
+    reply = await fetchOpenRouterReply(history);
+  }
+
+  // Google/Niramay Studio replacement logic (for all models)
+  reply = reply.replace(
+    /(\b(?:created|trained|made|built|developed|designed|powered|provided)\s+by\s+)(google|deepseek|meta|openai|anthropic|llama|llama-4|llama4|llama\-4|llama\-4\-maverick|maverick|open router|openrouter|open\-router|open\-router\.ai|deepseek\-chat|deepseek\-r1|meta\-llama|llama\-maverick|llama4\-maverick|llama\-4\-maverick|llama\-4\-maverick:free|deepseek\-chat:free|deepseek\-r1:free|google\/gemini\-2\.0\-flash\-exp:free)/gi,
+    '$1Niramay Studio'
+  );
+  // Also replace "I am an? (AI )?(assistant|model|bot) (created|made|built|developed|trained|designed|provided) by ..." with Niramay Studio
+  reply = reply.replace(
+    /\bI am (an? )?(AI )?(assistant|model|bot)? ?(created|made|built|developed|trained|designed|provided)? ?by [^.?!\n]+/gi,
+    "I am made by Niramay Studio. I'm a computer program designed to understand and respond to human language. I'm here to help answer your questions and chat with you."
+  );
+  // Also replace "I was (created|made|built|developed|trained|designed|provided) by ..." with Niramay Studio
+  reply = reply.replace(
+    /\bI was (created|made|built|developed|trained|designed|provided) by [^.?!\n]+/gi,
+    "I am made by Niramay Studio. I'm a computer program designed to understand and respond to human language. I'm here to help answer your questions and chat with you."
+  );
+  // Also replace "My creator is ..." etc.
+  reply = reply.replace(
+    /\b(My (creator|maker|builder|trainer|developer|designer) is|I was developed by|I was designed by|I was provided by) [^.?!\n]+/gi,
+    "I am made by Niramay Studio. I'm a computer program designed to understand and respond to human language. I'm here to help answer your questions and chat with you."
+  );
+  return reply;
+}
+
+// --- OpenRouter API (all models) ---
+async function fetchOpenRouterReply(history) {
+  // Find the selected model string and its max_tokens
+  const modelObj = MODEL_OPTIONS.find(m => m.id === selectedModel);
+  const model = modelObj ? modelObj.model : MODEL_OPTIONS[0].model;
+  const max_tokens = modelObj && modelObj.max_tokens ? modelObj.max_tokens : 2048;
+
+  // Convert Gemini-style history to OpenAI format (OpenRouter uses OpenAI format)
+  const messages = [];
+  for (const msg of history) {
+    if (msg.role === "user") {
+      messages.push({ role: "user", content: msg.parts[0].text });
+    } else if (msg.role === "model") {
+      messages.push({ role: "assistant", content: msg.parts[0].text });
+    }
+  }
+  let fullReply = "";
+  let workingMessages = [...messages];
+  let maxLoops = 5;
+  while (maxLoops-- > 0) {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + OPENROUTER_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        messages: workingMessages,
+        max_tokens: max_tokens,
+        temperature: 0.8
+      })
+    });
+    const data = await response.json();
+    let reply = "";
+    if (data && data.choices && data.choices.length > 0) {
+      reply = data.choices[0].message?.content || "";
+    }
+    if (!reply) {
+      if (data && data.error && data.error.message) {
+        reply = "❌ Server API error: " + data.error.message;
+      } else {
+        reply = "⚠️ Server didn't return any text.";
+      }
+      fullReply += reply;
+      break;
+    }
+    reply = reply.trim();
+    fullReply += (fullReply && !fullReply.endsWith('\n') ? '\n' : '') + reply;
+    const isLikelyCut =
+      reply.endsWith("...") ||
+      reply.endsWith("..") ||
+      reply.endsWith("--") ||
+      reply.endsWith("—") ||
+      reply.endsWith(":") ||
+      reply.endsWith(",") ||
+      reply.endsWith(";") ||
+      reply.endsWith("(") ||
+      reply.endsWith("[") ||
+      reply.endsWith("{") ||
+      reply.endsWith("/") ||
+      reply.endsWith("\\") ||
+      reply.length > 1800;
+    if (!isLikelyCut) break;
+    workingMessages.push({ role: "assistant", content: reply });
+    workingMessages.push({ role: "user", content: "continue" });
+  }
+  return fullReply;
+}
+
+// --- New function: Official Gemini 2.0 Flash (NS (2.0 PRO)) ---
+async function fetchGeminiOfficialReply(history) {
+  const geminiPro = MODEL_OPTIONS.find(m => m.id === 'gemini_pro');
+  const apiKey = geminiPro.api_key;
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
+  const contents = history.map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'model',
+    parts: msg.parts
+  }));
+  let fullReply = "";
+  let workingHistory = [...contents];
+  let maxLoops = 5;
+  while (maxLoops-- > 0) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: workingHistory,
+        generationConfig: {
+          temperature: 0.8,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048
+        }
+      })
+    });
+    const data = await response.json();
+    let reply = "";
+    if (data && data.candidates && data.candidates.length > 0) {
+      const parts = data.candidates[0].content?.parts;
+      if (parts && parts.length > 0 && parts[0].text) {
+        reply = parts[0].text;
+      }
+    }
+    if (!reply) {
+      if (data && data.error && data.error.message) {
+        reply = "❌ Server error: " + data.error.message;
+      } else {
+        reply = "⚠️ Server didn't return any text.";
+      }
+      fullReply += reply;
+      break;
+    }
+    reply = reply.trim();
+    fullReply += (fullReply && !fullReply.endsWith('\n') ? '\n' : '') + reply;
+    const isLikelyCut =
+      reply.endsWith("...") ||
+      reply.endsWith("..") ||
+      reply.endsWith("--") ||
+      reply.endsWith("—") ||
+      reply.endsWith(":") ||
+      reply.endsWith(",") ||
+      reply.endsWith(";") ||
+      reply.endsWith("(") ||
+      reply.endsWith("[") ||
+      reply.endsWith("{") ||
+      reply.endsWith("/") ||
+      reply.endsWith("\\") ||
+      reply.length > 1800;
+    if (!isLikelyCut) break;
+    workingHistory.push({ role: 'model', parts: [{ text: reply }] });
+    workingHistory.push({ role: 'user', parts: [{ text: "continue" }] });
+  }
+  return fullReply;
+}
+
+// --- Chat send logic (update to use fetchAIReply) ---
 async function sendMessage() {
   const message = userInput.value.trim();
   if (!message) return;
@@ -569,7 +806,7 @@ async function sendMessage() {
   const loadingDiv = appendMessage("...", 'bot', true);
 
 
-  const reply = await fetchGeminiReply(chatHistory);
+  const reply = await fetchAIReply(chatHistory);
   if (loadingDiv) chatBox.removeChild(loadingDiv);
   if (reply) {
     appendMessage(reply, 'bot');
@@ -579,57 +816,6 @@ async function sendMessage() {
     });
     saveCurrentChatToStorage();
   }
-}
-
-function fetchGeminiReply(history) {
-  return new Promise(async (resolve) => {
-    try {
-      const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + API_KEY,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: history,
-            generationConfig: {
-              temperature: 0.8,
-              topK: 40,
-              topP: 0.95,
-              maxOutputTokens: 1024
-            }
-          })
-        }
-      );
-
-      const data = await response.json();
-      console.log("Gemini response:", data);
-
-      // Try to extract the reply text robustly
-      let reply = "";
-      if (data && data.candidates && data.candidates.length > 0) {
-        const parts = data.candidates[0].content?.parts;
-        if (parts && parts.length > 0 && parts[0].text) {
-          reply = parts[0].text;
-        }
-      }
-
-      if (!reply) {
-        if (data && data.candidates && data.candidates.length > 0) {
-          reply = JSON.stringify(data.candidates[0]);
-        } else if (data && data.error && data.error.message) {
-          reply = "❌ Gemini API error: " + data.error.message;
-        } else {
-          reply = "⚠️ Gemini didn't return any text.";
-        }
-      }
-      // NEW: Replace any occurrence of "google" (case-insensitive) with "Niramay Studio"
-      reply = reply.replace(/google/gi, "Niramay Studio");
-      resolve(reply);
-    } catch (error) {
-      console.error("API Error:", error);
-      resolve("❌ Error communicating with Gemini API.");
-    }
-  });
 }
 
 // --- Auto-resize textarea ---
@@ -697,3 +883,15 @@ window.copyCode = function(btn) {
   btn.textContent = "Copied!";
   setTimeout(() => { btn.textContent = "Copy"; }, 1200);
 };
+
+// Add event listener to clear history button
+clearHistoryBtn && clearHistoryBtn.addEventListener('click', () => {
+  if (confirm("Are you sure you want to clear all chat history? This cannot be undone.")) {
+    allChats = {};
+    localStorage.setItem('gemini_chats', JSON.stringify(allChats));
+    chatHistory = [];
+    currentChatId = null;
+    renderHistoryList();
+    startNewChat(); // Start fresh chat after clearing
+  }
+});
